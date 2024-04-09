@@ -87,9 +87,17 @@ class PDFMerger:
                 print(f"No pages found for {unique_number}.pdf. Skipping.")
 
 if __name__ == "__main__":
-    input_folder = r"P:\Users\Justin\output_test\merge-o\01"
-    output_folder = r"P:\Users\Justin\output_test\merge-o\merge-o_test"
+    input_folder = r''
+    output_folder = r''
+
+    # Test folders
+    # input_folder = r"P:\Users\Justin\output_test\rsg_doc_merger\01"
+    # output_folder = r"P:\Users\Justin\output_test\rsg_doc_merger\out"
 
     pdf_merger = PDFMerger()
     pdf_merger.merge_pdfs(input_folder, output_folder)
+
+    # Open File Explorer at the output_folder
+    os.startfile(output_folder)
+
     print("PDFs merged successfully.")
