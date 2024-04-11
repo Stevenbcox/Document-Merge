@@ -34,7 +34,7 @@ class PDFMerger:
         skipped_extensions = ['.eml', '.htm', '.xlsx']
         return any(file_name.lower().endswith(ext) for ext in skipped_extensions)
 
-    def merge_pdfs(self, input_folder, output_folder):
+    def main(self, input_folder, output_folder):
         document_type_order = [
             "Account File",
             "Contract_Note_Acct Agr",
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     # output_folder = r"P:\Users\Justin\output_test\rsg_doc_merger\out"
 
     pdf_merger = PDFMerger()
-    pdf_merger.merge_pdfs(input_folder, output_folder)
+    pdf_merger.main(input_folder, output_folder)
 
     # Open File Explorer at the output_folder
     os.startfile(output_folder)

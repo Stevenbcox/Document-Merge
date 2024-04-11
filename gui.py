@@ -1,92 +1,122 @@
-import tkinter as tk
-import subprocess
-import threading
 import os
-from tkinter import filedialog
+import threading
+import tkinter as tk
+from ttkthemes import ThemedTk # pip install ttkthemes
+from tkinter import filedialog, ttk, Menu
+from tkinter.filedialog import askdirectory
 from main import PDFMerger
 
-class PDFMergerGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("RSG Document Merger")
+class GUI:
+    def __init__(self, master):
+        self.master = master
+        self.master.title("RSG Document Merger")
 
-        self.input_label = tk.Label(root, text="Input Folder:")
-        self.input_label.grid(row=0, column=0, padx=10, pady=10)
+        # Create a menu bar
+        menu_bar = Menu(self.master)
+        self.master.config(menu=menu_bar)
 
-        self.input_entry = tk.Entry(root, width=25)
-        self.input_entry.grid(row=0, column=1, padx=10, pady=10)
+        # Create an Help menu
+        instructions_menu = Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="Help", menu=instructions_menu)
 
-        self.browse_input_button = tk.Button(root, text="Browse", command=self.browse_input_folder)
-        self.browse_input_button.grid(row=0, column=2, padx=10, pady=10)
+        # Add an Instructions option to the menu
+        instructions_menu.add_command(label="Instructions", command=self.show_instructions)
 
-        self.output_label = tk.Label(root, text="Output Folder:")
-        self.output_label.grid(row=1, column=0, padx=10, pady=10)
+        # Create labels and input widgets
+        self.input_folder_label = tk.Label(master, text="Input Folder:")
+        self.input_folder_label.grid(row=0, column=0, sticky=tk.E, padx=5, pady=(5,0))
 
-        self.output_entry = tk.Entry(root, width=25)
-        self.output_entry.grid(row=1, column=1, padx=10, pady=10)
+        self.input_folder_var = tk.StringVar()
+        self.input_folder_entry = ttk.Entry(master, textvariable=self.input_folder_var, width=30)
+        self.input_folder_entry.grid(row=0, column=1, sticky=tk.W, padx=5, pady=(5,0))
 
-        self.browse_output_button = tk.Button(root, text="Browse", command=self.browse_output_folder)
-        self.browse_output_button.grid(row=1, column=2, padx=10, pady=10)
+        self.browse_input_button = ttk.Button(master, text="Browse", command=self.browse_input)
+        self.browse_input_button.grid(row=0, column=2, padx=10, pady=(5,0), sticky=tk.W)
 
-        self.merge_button = tk.Button(root, text="Merge PDFs", command=self.merge_pdfs)
-        self.merge_button.grid(row=2, column=2, padx=15, pady=10)
+        # Create labels and output widgets
+        self.output_folder_label = tk.Label(master, text="Output Folder:")
+        self.output_folder_label.grid(row=1, column=0, sticky=tk.E, padx=5, pady=5)
 
-        self.status_label = tk.Label(root, text="")
-        self.status_label.grid(row=2, column=0, columnspan=2, pady=10)
+        self.output_folder_var = tk.StringVar()
+        self.output_folder_entry = ttk.Entry(master, textvariable=self.output_folder_var, width=30)
+        self.output_folder_entry.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
 
-        # Bind the close window event to the method that interrupts the thread
-        root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.browse_output_button = ttk.Button(master, text="Browse", command=self.browse_output)
+        self.browse_output_button.grid(row=1, column=2, padx=10, pady=5, sticky=tk.W)
 
-    def browse_input_folder(self):
-        folder_selected = filedialog.askdirectory()
-        self.input_entry.delete(0, tk.END)
-        self.input_entry.insert(0, folder_selected)
+        # Create label for processing status
+        self.processing_status_var = tk.StringVar()
+        self.processing_status_label = tk.Label(master, textvariable=self.processing_status_var, fg="grey")
+        self.processing_status_label.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky=tk.W)
 
-    def browse_output_folder(self):
-        folder_selected = filedialog.askdirectory()
-        self.output_entry.delete(0, tk.END)
-        self.output_entry.insert(0, folder_selected)
-    
-    def on_closing(self):
-        # Stop the merging thread and close the application
-        if hasattr(self, "merging_thread") and self.merging_thread.is_alive():
-            self.merging_thread.do_run = False  # Set the flag to stop the thread
-            self.merging_thread.join()  # Wait for the thread to finish
-        self.root.destroy()
+        # Create generate button
+        self.generate_button = ttk.Button(master, text="Merge PDFs", command=self.generate_excel)
+        self.generate_button.grid(row=2, columnspan=3, padx=10, pady=10, sticky=tk.E)
 
-    def merge_pdfs(self):
-        input_folder = self.input_entry.get()
-        output_folder = self.output_entry.get()
+    def set_processing_status(self, status):
+        self.processing_status_var.set(status)
 
-        if input_folder and output_folder:
-            # Disable the merge button during the process
-            self.merge_button.config(state=tk.DISABLED)
+    def browse_input(self):
+        folder_path = askdirectory()
+        self.input_folder_var.set(folder_path)
 
-            # Update the status label to inform the user that the request is processing
-            self.status_label.config(text="Processing... Please wait.")
+    def browse_output(self):
+        folder_path = filedialog.askdirectory()
+        self.output_folder_var.set(folder_path)
 
-            # Start the merging process in a separate thread
-            self.merging_thread = threading.Thread(target=self.merge_pdfs_thread, args=(input_folder, output_folder))
-            self.merging_thread.start()
+    def open_file_explorer(self, folder_path):
+        os.startfile(folder_path)
 
-    def merge_pdfs_thread(self, input_folder, output_folder):
+    def show_instructions(self):
+        # Specify the path to your premade instructions document
+        instructions_path = r'p:\Users\Justin\Program Shortcuts\Docs\PDF\RSG Document Merger.pdf'
+
+        if os.path.exists(instructions_path):
+            self.open_file_explorer(instructions_path)
+        else:
+            self.set_processing_status("Instructions document not found.")
+
+    def generate_excel(self):
+        input_folder = self.input_folder_var.get()
+        output_folder = self.output_folder_var.get()
+
+        if not input_folder or not output_folder:
+            self.set_processing_status("Please select both input file and output folder.")
+            return
+
         try:
-            pdf_merger = PDFMerger()
-            pdf_merger.merge_pdfs(input_folder, output_folder)
+            # Run the main function in a separate thread
+            threading.Thread(target=self.main_threaded, args=(input_folder, os.path.abspath(self.output_folder_var.get()))).start()
 
-            # Open file explorer and navigate into the output folder after successful merge
-            subprocess.Popen(['explorer', '/e,', os.path.abspath(output_folder)], shell=True)
+            # Disable the Generate Excel button during processing
+            self.generate_button.config(state=tk.DISABLED)
 
-            # Update the status label in a thread-safe way
-            self.root.after(0, self.status_label.config, {'text': "PDFs merged successfully."})
+            # Set processing status
+            self.set_processing_status("Processing...")
+
         except Exception as e:
-            # Handle exceptions and update the status label
-            self.root.after(0, self.status_label.config, {'text': f"Error: {str(e)}"})
+            # Provide user-friendly error message
+            print("Error:", e)
+            self.set_processing_status("Error during processing")
+            # Re-enable the Generate Excel button on error
+            self.generate_button.config(state=tk.NORMAL)
+
+    def main_threaded(self, input_folder, output_folder):
+        try:
+            PDFMerger(input_folder, output_folder)
+            # Provide user feedback upon completion
+            self.set_processing_status("File created successfuly.")
+            # Open the output folder
+            os.startfile(output_folder)
+        except Exception as e:
+            # Provide user-friendly error message
+            print("Error during processing:", e)
+            self.set_processing_status("Error during processing")
         finally:
-            # Enable the merge button after the process
-            self.root.after(0, self.merge_button.config, {'state': tk.NORMAL})
+            # Re-enable the Generate Excel button after processing
+            self.generate_button.config(state=tk.NORMAL)
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    gui = PDFMergerGUI(root)
-    root.mainloop()
+    themed = ThemedTk(theme='plastik')
+    app = GUI(themed)
+    themed.mainloop()
