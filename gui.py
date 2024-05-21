@@ -4,7 +4,7 @@ import tkinter as tk
 from ttkthemes import ThemedTk # pip install ttkthemes
 from tkinter import filedialog, ttk, Menu
 from tkinter.filedialog import askdirectory
-from main import PDFMerger
+from main import main
 
 class GUI:
     def __init__(self, master):
@@ -103,7 +103,7 @@ class GUI:
 
     def main_threaded(self, input_folder, output_folder):
         try:
-            PDFMerger(input_folder, output_folder)
+            main(input_folder, output_folder)
             # Provide user feedback upon completion
             self.set_processing_status("File created successfuly.")
             # Open the output folder
