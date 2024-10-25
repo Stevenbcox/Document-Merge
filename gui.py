@@ -105,7 +105,7 @@ class GUI:
         try:
             main(input_folder, output_folder)
             # Provide user feedback upon completion
-            self.set_processing_status("File created successfuly.")
+            self.set_processing_status("Files created successfuly.")
             # Open the output folder
             os.startfile(output_folder)
         except Exception as e:

@@ -3,6 +3,7 @@ import re
 import fitz
 from PIL import Image
 from reportlab.pdfgen import canvas
+from datetime import datetime
 
 def get_unique_number(pdf_name):
     unique_number_match = re.search(r'\d{9}', pdf_name)
@@ -29,20 +30,41 @@ def extract_document_type(file_name):
         return doc_type, unique_number, stm_date
     return None
 
+def extract_date(file_name):
+    match = re.search(r'Stm\. Date - (\d{1,2}_\d{1,2}_\d{4})', file_name)
+    if match:
+        return datetime.strptime(match.group(1), '%m_%d_%Y')
+    return None
+
 def is_skipped_file(file_name):
     skipped_extensions = ['.eml', '.htm', '.xlsx']
     return any(file_name.lower().endswith(ext) for ext in skipped_extensions)
 
-def main(input_folder, output_folder):
-    document_type_order = [
-        "Account File",
-        "Contract_Note_Acct Agr",
-        "Truth in Lending",
+def get_sort_key(file_name):
+    order = [
+        "Terms",
         "Bill Statement - CHARGE OFF",
         "Bill Statement",
-        "Pay History"
+        "Bill Statement - ACTIVITY",
+        "Pay History",
+        "Sales Memo",
+        "Supplemental Borrower",
+        "GOODBYE"
     ]
+    for index, keyword in enumerate(order):
+        if keyword in file_name:
+            return index
+    return len(order)  # If no keyword is found, place it at the end
 
+def move_files_to_front(sorted_document_list, order):
+    for keyword in reversed(order):
+        for doc in sorted_document_list:
+            if keyword in doc[3]:
+                sorted_document_list.remove(doc)
+                sorted_document_list.insert(0, doc)
+    return sorted_document_list
+
+def main(input_folder, output_folder):
     pdf_dict = {}
 
     for root, _, files in os.walk(input_folder):
@@ -59,20 +81,45 @@ def main(input_folder, output_folder):
 
                     if file.lower().endswith(('.tif', '.tiff')):
                         pdf_path = convert_tif_to_pdf(file_path, file_path.replace('.tif', '_converted.pdf').replace('.tiff', '_converted.pdf'))
-                        pdf_dict.setdefault(unique_number, []).append((document_type, pdf_path, document_info[2] if document_info else None))
+                        pdf_dict.setdefault(unique_number, []).append((document_type, pdf_path, extract_date(file), file))
                     elif file.lower().endswith(('.jpg', '.jpeg')):
                         pdf_path = convert_image_to_pdf(file_path, file_path.replace('.jpg', '_converted.pdf').replace('.jpeg', '_converted.pdf'))
-                        pdf_dict.setdefault(unique_number, []).append((document_type, pdf_path, document_info[2] if document_info else None))
+                        pdf_dict.setdefault(unique_number, []).append((document_type, pdf_path, extract_date(file), file))
                     else:
-                        pdf_dict.setdefault(unique_number, []).append((document_type, file_path, document_info[2] if document_info else None))
+                        pdf_dict.setdefault(unique_number, []).append((document_type, file_path, extract_date(file), file))
 
     for unique_number, document_list in pdf_dict.items():
-        # Sort documents based on the second date in descending order
-        document_list.sort(key=lambda x: (x[2] if x[2] is not None else ''), reverse=True)
+        # Filter out documents without a valid date
+        valid_documents = [doc for doc in document_list if doc[2] is not None]
+        invalid_documents = [doc for doc in document_list if doc[2] is None]
+
+        # Sort valid documents by custom order and date in ascending order
+        valid_documents.sort(key=lambda x: (get_sort_key(x[3]), x[2] if x[2] else datetime.min))
+
+        # Combine valid and invalid documents (invalid documents will be at the end)
+        sorted_document_list = valid_documents + invalid_documents
+
+        # Move files to the front based on the order list
+        order = [
+            "Terms",
+            "Bill Statement - CHARGE OFF",
+            "Bill Statement",
+            "Bill Statement - ACTIVITY",
+            "Pay History",
+            "Sales Memo",
+            "Supplemental Borrower",
+            "GOODBYE"
+        ]
+        sorted_document_list = move_files_to_front(sorted_document_list, order)
+
+        # Print the order of the files in the sorted list
+        print(f"Order of files for unique number {unique_number}:")
+        for doc in sorted_document_list:
+            print(doc[3])
 
         merged_pdf = fitz.open()
 
-        for _, document_path, _ in document_list:
+        for _, document_path, _, _ in sorted_document_list:
             pdf_document = fitz.open(document_path)
             merged_pdf.insert_pdf(pdf_document)
 
@@ -90,8 +137,8 @@ if __name__ == "__main__":
     output_folder = r''
 
     # Test folders
-    # input_folder = r"P:\Users\Justin\output_test\rsg_doc_merger\01"
-    # output_folder = r"P:\Users\Justin\output_test\rsg_doc_merger\out"
+    input_folder = r"P:\Users\Justin\Projects\output_test\rsg_doc_merger\01"
+    output_folder = r"P:\Users\Justin\Projects\output_test\rsg_doc_merger\out"
 
     main(input_folder, output_folder)
 
