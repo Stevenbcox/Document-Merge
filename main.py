@@ -4,6 +4,7 @@ import fitz
 from PIL import Image
 from reportlab.pdfgen import canvas
 from datetime import datetime
+from utils import progress_callback
 
 def get_unique_number(pdf_name):
     unique_number_match = re.search(r'\d{9}', pdf_name)
@@ -64,7 +65,7 @@ def move_files_to_front(sorted_document_list, order):
                 sorted_document_list.insert(0, doc)
     return sorted_document_list
 
-def main(input_folder, output_folder):
+def main(input_folder, output_folder, progress_queue):
     pdf_dict = {}
 
     for root, _, files in os.walk(input_folder):
@@ -87,6 +88,9 @@ def main(input_folder, output_folder):
                         pdf_dict.setdefault(unique_number, []).append((document_type, pdf_path, extract_date(file), file))
                     else:
                         pdf_dict.setdefault(unique_number, []).append((document_type, file_path, extract_date(file), file))
+
+    total_files = sum(len(doc_list) for doc_list in pdf_dict.values())
+    processed_files = 0
 
     for unique_number, document_list in pdf_dict.items():
         # Filter out documents without a valid date
@@ -112,7 +116,6 @@ def main(input_folder, output_folder):
         ]
         sorted_document_list = move_files_to_front(sorted_document_list, order)
 
-        # Print the order of the files in the sorted list
         print(f"Order of files for unique number {unique_number}:")
         for doc in sorted_document_list:
             print(doc[3])
@@ -122,6 +125,9 @@ def main(input_folder, output_folder):
         for _, document_path, _, _ in sorted_document_list:
             pdf_document = fitz.open(document_path)
             merged_pdf.insert_pdf(pdf_document)
+            processed_files += 1
+            process = processed_files / total_files
+            progress_callback(progress_queue, process)
 
         output_filename = os.path.join(output_folder, f"{unique_number}.pdf")
 
@@ -131,6 +137,8 @@ def main(input_folder, output_folder):
             print(f"PDF {output_filename} merged successfully.")
         else:
             print(f"No pages found for {unique_number}.pdf. Skipping.")
+
+    os.startfile(output_folder)
 
 if __name__ == "__main__":
     input_folder = r''

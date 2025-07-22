@@ -1,95 +1,317 @@
+# Compile using the following command:
+# pyinstaller --onefile --noconsole --add-data ".\assets\rvo_logo.png;assets" .\gui.py
+
+# Add the following code to the main.py file to handle progress updates:
+# Import the necessary modules
+# from utils import progress_callback
+
+# main function
+# (add the progress_queue=None parameter)
+# (adjust for loop to include the index and range(total_files))
+
+# Add to the end of the for loop in the main function:
+# process = (index + 1) / total_files
+# progress_callback(progress_queue, process)
+
+import sys
+
+# Fixes console=False issue in PyInstaller
+class DummyStream:
+    def write(self, *args, **kwargs): pass
+    def flush(self): pass
+
+if sys.stderr is None:
+    sys.stderr = DummyStream()
+if sys.stdout is None:
+    sys.stdout = DummyStream()
+
 import os
+import queue
 import threading
-import tkinter as tk
-from ttkthemes import ThemedTk # pip install ttkthemes
-from tkinter import filedialog, ttk, Menu
-from tkinter.filedialog import askdirectory
+import subprocess
+import customtkinter as ctk
+from PIL import Image
+from tkinter import  filedialog
 from main import main
+
+# Define the program name and input type
+program_name = "RSG Document Merger"  # Change this to your program name
+instructions_path = r'P:\Users\Justin\Program Shortcuts\Docs\PDF\RSG Document Merger.pdf' # Path to the instructions
+input_type = "folder"  # Type file, files, ofn, or folder depending on input type
+
+# Function to get the absolute path to a resource
+def resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
 
 class GUI:
     def __init__(self, master):
         self.master = master
-        self.master.title("RSG Document Merger")
+        self.master.title(f"{program_name}")
 
-        # Create a menu bar
-        menu_bar = Menu(self.master)
-        self.master.config(menu=menu_bar)
+        # Set appearance mode and color theme
+        ctk.set_appearance_mode("System")  # or "Dark", "Light"
 
-        # Create an Help menu
-        instructions_menu = Menu(menu_bar, tearoff=0)
-        menu_bar.add_cascade(label="Help", menu=instructions_menu)
+        ctk.set_default_color_theme("dark-blue")
+        
+        master.configure(bg="#303030")
 
-        # Add an Instructions option to the menu
-        instructions_menu.add_command(label="Instructions", command=self.show_instructions)
+        self.image_frame = ctk.CTkFrame(master, fg_color="#303030", corner_radius=0, width=270, height=130)
+        self.image_frame.grid(row=0, column=0, rowspan=6, sticky="nsew")
 
-        # Create labels and input widgets
-        self.input_folder_label = tk.Label(master, text="Input Folder:")
-        self.input_folder_label.grid(row=0, column=0, sticky=tk.E, padx=5, pady=(5,0))
+        # Use this for your image path
+        image_path = resource_path('assets/rvo_logo.png')
+        pil_image = Image.open(image_path)
 
-        self.input_folder_var = tk.StringVar()
-        self.input_folder_entry = ttk.Entry(master, textvariable=self.input_folder_var, width=30)
-        self.input_folder_entry.grid(row=0, column=1, sticky=tk.W, padx=5, pady=(5,0))
+        # Pass the PIL image to CTkImage
+        self.image = ctk.CTkImage(light_image=pil_image, size=(270, 130))
+        self.image_label = ctk.CTkLabel(
+            self.image_frame,
+            image=self.image,
+            text="",
+            fg_color="#303030",
+            corner_radius=0,
+            width=270,
+            height=130
+        )
+        self.image_label.pack(padx=20, pady=0, fill="both", expand=True)
 
-        self.browse_input_button = ttk.Button(master, text="Browse", command=self.browse_input)
-        self.browse_input_button.grid(row=0, column=2, padx=10, pady=(5,0), sticky=tk.W)
+        # Configure the text color if the appearance mode is dark
+        if ctk.get_appearance_mode() == "Dark":
+            text_color = "#8e979e"
+            progress_bar_color = "#80c8ff"
+        else:
+            text_color = "#808080"
 
-        # Create labels and output widgets
-        self.output_folder_label = tk.Label(master, text="Output Folder:")
-        self.output_folder_label.grid(row=1, column=0, sticky=tk.E, padx=5, pady=5)
+        # Content column
+        self.title_label = ctk.CTkLabel(
+            master,
+            text=f"{program_name}",
+            font=("Times New Roman", 28),
+            text_color=text_color
+        )
+        self.title_label.grid(row=0, column=1, columnspan=2, padx=0, pady=(100,30), sticky="new")
 
-        self.output_folder_var = tk.StringVar()
-        self.output_folder_entry = ttk.Entry(master, textvariable=self.output_folder_var, width=30)
-        self.output_folder_entry.grid(row=1, column=1, sticky=tk.W, padx=5, pady=5)
+        # Special handling for radio_4 as a checkbox
+        input_entry_placeholder = ""
+        if input_type == "file":
+            input_entry_placeholder = "Input File"
+        elif input_type == "files":
+            input_entry_placeholder = "Input File(s)"
+        elif input_type == "ofn":
+            input_entry_placeholder = "OFN List"
+        elif input_type == "folder":
+            input_entry_placeholder = "Input Folder"
 
-        self.browse_output_button = ttk.Button(master, text="Browse", command=self.browse_output)
-        self.browse_output_button.grid(row=1, column=2, padx=10, pady=5, sticky=tk.W)
+        self.input_entry = ctk.CTkEntry(
+            master,
+            width=200,
+            placeholder_text=f"{input_entry_placeholder}",
+        )
+        self.input_entry.grid(row=1, column=1, sticky="ew", padx=(18,0), pady=(0,5))
 
-        # Create label for processing status
-        self.processing_status_var = tk.StringVar()
-        self.processing_status_label = tk.Label(master, textvariable=self.processing_status_var, fg="grey")
-        self.processing_status_label.grid(row=2, column=0, columnspan=2, padx=10, pady=10, sticky=tk.W)
+        self.browse_input_button = ctk.CTkButton(master, text="Browse", command=self.browse_input, width=75)
+        self.browse_input_button.grid(row=1, column=2, padx=(5,18), pady=(0,5), sticky="ew")
 
-        # Create generate button
-        self.generate_button = ttk.Button(master, text="Merge PDFs", command=self.generate_excel)
-        self.generate_button.grid(row=2, columnspan=3, padx=10, pady=10, sticky=tk.E)
+        self.output_folder_entry = ctk.CTkEntry(
+            master,
+            width=200,
+            placeholder_text="Output Folder",
+        )
+        self.output_folder_entry.grid(row=2, column=1, sticky="ew", padx=(18,0), pady=(0,5))
 
-    def set_processing_status(self, status):
-        self.processing_status_var.set(status)
+        self.browse_output_button = ctk.CTkButton(master, text="Browse", command=self.browse_output, width=75)
+        self.browse_output_button.grid(row=2, column=2, padx=(5,18), pady=(0,5), sticky="ew")
 
-    def browse_input(self):
-        folder_path = askdirectory()
-        self.input_folder_var.set(folder_path)
+        # Submit button
+        self.submit_button = ctk.CTkButton(master, text="Submit", command=self.submit_process)
+        self.submit_button.grid(row=3, column=1, columnspan=2, padx=18, pady=(0,5), sticky="ew")
 
-    def browse_output(self):
-        folder_path = filedialog.askdirectory()
-        self.output_folder_var.set(folder_path)
+        # Processing status
+        self.processing_status_var = ctk.StringVar()
+        self.processing_status_label = ctk.CTkLabel(
+            master,
+            textvariable=self.processing_status_var,
+            text_color="#808080",
+            font=("Ariel", 16)
+        )
+        self.processing_status_label.grid(row=4, column=1, columnspan=2, padx=0, pady=(35,39), sticky="ew")
+        # self.processing_status_label.configure(anchor="center")
 
-    def open_file_explorer(self, folder_path):
-        os.startfile(folder_path)
+        # In the GUI class __init__ method, add:
+        self.processing_dots = ["...", "   ", ".  ", ".. "]
+        self.processing_dots_index = 0
+        self.processing_dots_running = False
+
+        if ctk.get_appearance_mode() == "Dark":
+            self.progress_bar = ctk.CTkProgressBar(master, width=200, height=10, corner_radius=4, progress_color="#0091ff")
+        else:
+            self.progress_bar = ctk.CTkProgressBar(master, width=200, height=10, corner_radius=4)
+
+        self.progress_bar.grid(row=5, column=1, columnspan=2, padx=58, pady=(0,36), sticky="ew")
+        self.progress_bar.set(0)
+
+        self.progress_queue = queue.Queue()
+        self.master.after(100, self.check_progress_queue)
+
+        self.progress_bar.grid_remove()
+
+        # Configure grid weights
+        for i in range(5):
+            master.grid_rowconfigure(i, weight=0)
+
+        for i in range(3):
+            master.grid_columnconfigure(i, weight=0)
+
+        self.help_dropdown = None
+        self.help_button = ctk.CTkButton(
+            self.image_frame,
+            text="Help",
+            width=30,
+            height=30,
+            command=self.show_help_dropdown,
+            fg_color="#505050"
+        )
+        self.help_button.place(x=5, y=5)
+
+    def show_help_dropdown(self):
+        if self.help_dropdown and self.help_dropdown.winfo_exists():
+            self.help_dropdown.destroy()
+            self.master.unbind("<Button-1>")
+            return
+
+        self.help_dropdown = ctk.CTkFrame(self.image_frame, fg_color="#404040", corner_radius=6)
+        self.help_dropdown.place(x=5, y=40)
+
+        instructions_btn = ctk.CTkButton(
+            self.help_dropdown, text="Instructions", width=120, command=self.show_instructions
+        )
+        instructions_btn.pack(pady=2, padx=2)
+
+        # Bind a global click event
+        self.master.bind("<Button-1>", self.on_click_outside_help, add="+")
+
+    def on_click_outside_help(self, event):
+        if self.help_dropdown and self.help_dropdown.winfo_exists():
+            widget = event.widget
+            # Check if click is outside the dropdown and help button
+            if widget not in (self.help_dropdown, self.help_button) and not str(widget).startswith(
+                    str(self.help_dropdown)):
+                self.help_dropdown.destroy()
+                self.master.unbind("<Button-1>")
+
+    def open_edit_docs(self):
+        # Specify the path to your premade instructions document
+        edit_docs_path = r'P:\Users\Justin\Projects\efile_contested_docs\document_names.json'
+
+        if os.path.exists(edit_docs_path):
+            os.startfile(edit_docs_path)
+        else:
+            self.set_processing_status("Document Names file not found.")
 
     def show_instructions(self):
-        # Specify the path to your premade instructions document
-        instructions_path = r'p:\Users\Justin\Program Shortcuts\Docs\PDF\RSG Document Merger.pdf'
-
         if os.path.exists(instructions_path):
-            self.open_file_explorer(instructions_path)
+            os.startfile(instructions_path)
         else:
             self.set_processing_status("Instructions document not found.")
 
-    def generate_excel(self):
-        input_folder = self.input_folder_var.get()
-        output_folder = self.output_folder_var.get()
+    # Animate processing dots:
+    def animate_processing_dots(self):
+        if self.processing_dots_running:
+            dots = self.processing_dots[self.processing_dots_index]
+            self.processing_status_var.set(f"Processing{dots}")
+            self.processing_dots_index = (self.processing_dots_index + 1) % len(self.processing_dots)
+            self.master.after(500, self.animate_processing_dots)
 
-        if not input_folder or not output_folder:
-            self.set_processing_status("Please select both input file and output folder.")
+    # Update set_processing_status method:
+    def set_processing_status(self, status):
+        if status == "Processing...":
+            self.progress_bar.grid()
+            self.processing_status_label.grid_configure(pady=(35, 0))
+            self.processing_dots_running = True
+            self.processing_dots_index = 0
+            self.animate_processing_dots()
+        else:
+            self.progress_bar.grid_remove()
+            self.processing_status_label.grid_configure(pady=(35, 58))
+            self.processing_dots_running = False
+            self.processing_status_var.set(status)
+
+    def check_progress_queue(self):
+        try:
+            while True:
+                value = self.progress_queue.get_nowait()
+                self.progress_bar.set(value)
+        except queue.Empty:
+            pass
+        self.master.after(100, self.check_progress_queue)
+
+    def browse_input(self):
+        input_path = ""
+
+        # Open the file explorer to select a file/folder
+        if input_type == "files":
+            input_paths = filedialog.askopenfilenames(
+                filetypes=[("Excel files", "*.xlsx *.xlsm *.xltx *.xltm")] # Adjust file types as needed
+            )
+            if input_paths:
+                # Join file paths into a space-separated string for the entry widget
+                input_paths_str = '|'.join(input_paths)
+                self.input_entry.delete(0, "end")
+                self.input_entry.insert(0, input_paths_str)
+        elif input_type == "ofn":
+            # Look for text files only
+            input_path = filedialog.askopenfilename(
+                filetypes=[("Text files", "*.txt")]
+            )
+            # Create a list from the file content
+            with open(input_path, 'r') as file:
+                file_numbers = [line.strip() for line in file]  # Create a list
+            # Put the list into the input entry
+            self.input_entry.delete(0, "end")
+            self.input_entry.insert(0, ','.join(file_numbers))  # Join the list with a comma
+        else:
+            if input_type == "file":
+                input_path = filedialog.askopenfilename()
+            if input_type == "folder":
+                input_path = filedialog.askdirectory()
+
+            if input_path:
+                self.input_entry.delete(0, "end")
+                self.input_entry.insert(0, input_path)
+
+    def browse_output(self):
+        # Open the file explorer to select a folder
+        output_path = filedialog.askdirectory()
+        if output_path:
+            self.output_folder_entry.delete(0, "end")
+            self.output_folder_entry.insert(0, output_path)
+
+    def run_merge(self):
+        program_path = r"P:\Users\Justin\Projects\excel_merge\dist\gui\gui.exe"
+        subprocess.Popen(program_path, creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def run_format(self):
+        program_path = r"P:\Users\Justin\Projects\tax_disc_split_tool\dist\gui\gui.exe"
+        subprocess.Popen(program_path, creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def submit_process(self):
+        input_value = self.input_entry.get()
+        if not input_value:
+            self.set_processing_status("Missing parameters.")
+            return
+        output_folder = self.output_folder_entry.get()
+        if not output_folder:
+            self.set_processing_status("Missing parameters.")
             return
 
         try:
             # Run the main function in a separate thread
-            threading.Thread(target=self.main_threaded, args=(input_folder, os.path.abspath(self.output_folder_var.get()))).start()
+            threading.Thread(target=self.main_threaded, args=(input_value, output_folder)).start()
 
-            # Disable the Generate Excel button during processing
-            self.generate_button.config(state=tk.DISABLED)
+            # Disable the submit Excel button during processing
+            self.submit_button.configure(state="disabled")
 
             # Set processing status
             self.set_processing_status("Processing...")
@@ -98,25 +320,32 @@ class GUI:
             # Provide user-friendly error message
             print("Error:", e)
             self.set_processing_status("Error during processing")
-            # Re-enable the Generate Excel button on error
-            self.generate_button.config(state=tk.NORMAL)
 
-    def main_threaded(self, input_folder, output_folder):
+            # Re-enable the submit Excel button on error
+            self.submit_button.configure(state="normal")
+
+    def main_threaded(self, input_value, output_folder):
         try:
-            main(input_folder, output_folder)
+            # Reset the progress bar
+            self.progress_bar.set(0)
+
+            if input_type == "ofn":
+                input_value = [num.strip() for num in input_value.split(',')]
+            if input_type == "files":
+                input_value = input_value.split('|')
+
+            main(input_value, output_folder, self.progress_queue)
+
             # Provide user feedback upon completion
-            self.set_processing_status("Files created successfuly.")
-            # Open the output folder
-            os.startfile(output_folder)
+            self.set_processing_status("Processing complete.")
         except Exception as e:
             # Provide user-friendly error message
             print("Error during processing:", e)
-            self.set_processing_status("Error during processing")
         finally:
-            # Re-enable the Generate Excel button after processing
-            self.generate_button.config(state=tk.NORMAL)
+            # Re-enable the submit Excel button after processing
+            self.submit_button.configure(state="normal")
 
 if __name__ == "__main__":
-    themed = ThemedTk(theme='plastik')
-    app = GUI(themed)
-    themed.mainloop()
+    root = ctk.CTk()
+    app = GUI(root)
+    root.mainloop()
