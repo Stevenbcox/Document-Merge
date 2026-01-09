@@ -1,6 +1,7 @@
 import os
 import re
 import fitz
+import openpyxl
 from PIL import Image
 from reportlab.pdfgen import canvas
 from datetime import datetime
@@ -65,8 +66,25 @@ def move_files_to_front(sorted_document_list, order):
                 sorted_document_list.insert(0, doc)
     return sorted_document_list
 
+def check_pdf_integrity(pdf_path):
+    try:
+        with fitz.open(pdf_path) as doc:
+            _ = doc.page_count
+        return True
+    except Exception:
+        return False
+
+def write_merge_results_to_excel(results, excel_path):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["rsg number", "merged"])
+    for unique_number, merged in results:
+        ws.append([unique_number, "x" if merged else ""])
+    wb.save(excel_path)
+
 def main(input_folder, output_folder, progress_queue):
     pdf_dict = {}
+    merge_results = []
 
     for root, _, files in os.walk(input_folder):
         for file in files:
@@ -120,23 +138,39 @@ def main(input_folder, output_folder, progress_queue):
         for doc in sorted_document_list:
             print(doc[3])
 
-        merged_pdf = fitz.open()
-
+        # Verify integrity of all files before merging
+        all_files_ok = True
         for _, document_path, _, _ in sorted_document_list:
-            pdf_document = fitz.open(document_path)
-            merged_pdf.insert_pdf(pdf_document)
-            processed_files += 1
-            process = processed_files / total_files
-            progress_callback(progress_queue, process)
+            if not check_pdf_integrity(document_path):
+                print(f"Corrupted file detected: {document_path}. Skipping merge for {unique_number}.")
+                all_files_ok = False
+                break
 
+        merged_pdf = fitz.open()
         output_filename = os.path.join(output_folder, f"{unique_number}.pdf")
 
-        if merged_pdf.page_count > 0:
-            merged_pdf.save(output_filename)
-            merged_pdf.close()
-            print(f"PDF {output_filename} merged successfully.")
+        if all_files_ok:
+            for _, document_path, _, _ in sorted_document_list:
+                pdf_document = fitz.open(document_path)
+                merged_pdf.insert_pdf(pdf_document)
+                processed_files += 1
+                process = processed_files / total_files
+                progress_callback(progress_queue, process)
+
+            if merged_pdf.page_count > 0:
+                merged_pdf.save(output_filename)
+                merged_pdf.close()
+                print(f"PDF {output_filename} merged successfully.")
+                merge_results.append((unique_number, True))
+            else:
+                print(f"No pages found for {unique_number}.pdf. Skipping.")
+                merge_results.append((unique_number, False))
         else:
-            print(f"No pages found for {unique_number}.pdf. Skipping.")
+            merge_results.append((unique_number, False))
+
+    # Write results to Excel
+    excel_path = os.path.join(output_folder, "merge_results.xlsx")
+    write_merge_results_to_excel(merge_results, excel_path)
 
     os.startfile(output_folder)
 
