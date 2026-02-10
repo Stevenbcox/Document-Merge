@@ -25,6 +25,8 @@ def get_unique_number(pdf_name):
 
 def convert_image_to_pdf(image_path, pdf_path):
     img = Image.open(image_path)
+    if img.width > img.height:
+        img = img.rotate(90, expand=True)  # rotate landscape images
     pdf_path_with_extension = pdf_path if pdf_path.lower().endswith('.pdf') else pdf_path + '.pdf'
     c = canvas.Canvas(pdf_path_with_extension, pagesize=img.size)
     c.drawImage(image_path, 0, 0, width=img.size[0], height=img.size[1])
@@ -33,6 +35,8 @@ def convert_image_to_pdf(image_path, pdf_path):
 
 def convert_tif_to_pdf(tif_path, pdf_path):
     image = Image.open(tif_path)
+    if image.width > image.height:
+        image = image.rotate(90, expand=True)
     pdf_path_with_extension = pdf_path if pdf_path.lower().endswith('.pdf') else pdf_path + '.pdf'
     image.save(pdf_path_with_extension, 'PDF', resolution=100.0)
     return pdf_path_with_extension
@@ -117,6 +121,8 @@ def main(input_folder, output_folder, progress_queue=None):
                 unique_number = get_unique_number(file)
                 if not unique_number:
                     continue
+                if file == f"{unique_number}.pdf":
+                    continue 
 
                 document_info = extract_document_type(file)
                 document_type = document_info[0] if document_info else None
@@ -139,7 +145,7 @@ def main(input_folder, output_folder, progress_queue=None):
         valid_documents = [doc for doc in document_list if doc[2] is not None]
         invalid_documents = [doc for doc in document_list if doc[2] is None]
 
-        valid_documents.sort(key=lambda x: (get_sort_key(x[3]), x[2] if x[2] else datetime.min))
+        valid_documents.sort(key=lambda x: x[2] or datetime.min, reverse=True)
         sorted_document_list = valid_documents + invalid_documents
         sorted_document_list = move_files_to_front(sorted_document_list)
 
@@ -160,8 +166,16 @@ def main(input_folder, output_folder, progress_queue=None):
         if all_files_ok:
             for _, document_path, _, _ in sorted_document_list:
                 pdf_document = fitz.open(document_path)
+                
+                # Rotate horizontal pages to vertical (portrait)
+                for page_num in range(pdf_document.page_count):
+                    page = pdf_document[page_num]
+                    if page.rect.width > page.rect.height:
+                        page.set_rotation(90)  # rotate 90 degrees clockwise
+                
                 merged_pdf.insert_pdf(pdf_document)
                 pdf_document.close()
+                
                 processed_files += 1
                 progress = processed_files / total_files
                 progress_callback(progress_queue, progress)
