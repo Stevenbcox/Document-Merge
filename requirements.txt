@@ -4,12 +4,11 @@ customtkinter==5.2.2
 darkdetect==0.8.0
 et_xmlfile==2.0.0
 openpyxl==3.1.5
-packaging==24.0
+packaging==24.2
 pefile==2023.2.7
-pillow==10.2.0
-pyinstaller==6.5.0
+pillow>=12.0.0
+pyinstaller>=6.10.0
 pyinstaller-hooks-contrib==2024.3
-PyMuPDF==1.23.26
-PyMuPDFb==1.23.22
+PyMuPDF==1.26.7
 pywin32-ctypes==0.2.2
 reportlab==4.1.0
