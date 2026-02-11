@@ -142,12 +142,18 @@ def main(input_folder, output_folder, progress_queue=None):
     processed_files = 0
 
     for unique_number, document_list in pdf_dict.items():
-        valid_documents = [doc for doc in document_list if doc[2] is not None]
-        invalid_documents = [doc for doc in document_list if doc[2] is None]
+        # Keep only documents matching ORDER keywords
+        filtered_documents = [
+            doc for doc in document_list
+            if get_sort_key(doc[3]) < len(ORDER)
+        ]
 
-        valid_documents.sort(key=lambda x: x[2] or datetime.min, reverse=True)
-        sorted_document_list = valid_documents + invalid_documents
-        sorted_document_list = move_files_to_front(sorted_document_list)
+        # Sort by date (newest first)
+        filtered_documents.sort(key=lambda x: x[2] or datetime.min, reverse=True)
+
+        # Then apply ORDER grouping
+        sorted_document_list = move_files_to_front(filtered_documents)
+
 
         print(f"Order of files for unique number {unique_number}:")
         for doc in sorted_document_list:
