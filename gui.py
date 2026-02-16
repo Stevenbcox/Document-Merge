@@ -14,8 +14,16 @@
 # progress_callback(progress_queue, process)
 
 import sys
+import os
+import queue
+import threading
+import subprocess
+import customtkinter as ctk
+from PIL import Image
+from tkinter import filedialog
+from main import main
 
-# Fixes console=False issue in PyInstaller
+# ----------------- DummyStream Fix for PyInstaller console=False -----------------
 class DummyStream:
     def write(self, *args, **kwargs): pass
     def flush(self): pass
@@ -25,156 +33,108 @@ if sys.stderr is None:
 if sys.stdout is None:
     sys.stdout = DummyStream()
 
-import os
-import queue
-import threading
-import subprocess
-import customtkinter as ctk
-from PIL import Image
-from tkinter import  filedialog
-from main import main
+# ----------------- Config -----------------
+program_name = "Rsg Doc remerge"
+instructions_path = r'P:\Users\Justin\Program Shortcuts\Docs\PDF\RSG Document Merger.pdf'
+input_type = "folder"  # "file", "files", "ofn", "folder"
 
-# Define the program name and input type
-program_name = "RSG Document Merger"  # Change this to your program name
-instructions_path = r'P:\Users\Justin\Program Shortcuts\Docs\PDF\RSG Document Merger.pdf' # Path to the instructions
-input_type = "folder"  # Type file, files, ofn, or folder depending on input type
-
-# Function to get the absolute path to a resource
+# ----------------- Resource Path Helper -----------------
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
 
+# ----------------- GUI Class -----------------
 class GUI:
     def __init__(self, master):
         self.master = master
-        self.master.title(f"{program_name}")
-
-        # Set appearance mode and color theme
-        ctk.set_appearance_mode("System")  # or "Dark", "Light"
-
+        self.master.title(program_name)
+        ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("dark-blue")
-        
         master.configure(bg="#303030")
 
+        # ----------------- Image Frame -----------------
         self.image_frame = ctk.CTkFrame(master, fg_color="#303030", corner_radius=0, width=270, height=130)
-        self.image_frame.grid(row=0, column=0, rowspan=6, sticky="nsew")
+        self.image_frame.grid(row=0, column=0, rowspan=7, sticky="nsew")
 
-        # Use this for your image path
         image_path = resource_path('assets/rvo_logo.png')
         pil_image = Image.open(image_path)
-
-        # Pass the PIL image to CTkImage
-        self.image = ctk.CTkImage(light_image=pil_image, size=(270, 130))
-        self.image_label = ctk.CTkLabel(
-            self.image_frame,
-            image=self.image,
-            text="",
-            fg_color="#303030",
-            corner_radius=0,
-            width=270,
-            height=130
-        )
+        self.image = ctk.CTkImage(light_image=pil_image, size=(270,130))
+        self.image_label = ctk.CTkLabel(self.image_frame, image=self.image, text="", fg_color="#303030",
+                                        corner_radius=0, width=270, height=130)
         self.image_label.pack(padx=20, pady=0, fill="both", expand=True)
 
-        # Configure the text color if the appearance mode is dark
-        if ctk.get_appearance_mode() == "Dark":
-            text_color = "#8e979e"
-            progress_bar_color = "#80c8ff"
-        else:
-            text_color = "#808080"
+        # Help Button
+        self.help_dropdown = None
+        self.help_button = ctk.CTkButton(self.image_frame, text="Help", width=30, height=30,
+                                         command=self.show_help_dropdown, fg_color="#505050")
+        self.help_button.place(x=5, y=5)
 
-        # Content column
-        self.title_label = ctk.CTkLabel(
-            master,
-            text=f"{program_name}",
-            font=("Times New Roman", 28),
-            text_color=text_color
-        )
+        # ----------------- Title -----------------
+        text_color = "#8e979e" if ctk.get_appearance_mode() == "Dark" else "#808080"
+        self.title_label = ctk.CTkLabel(master, text=program_name, font=("Times New Roman", 28), text_color=text_color)
         self.title_label.grid(row=0, column=1, columnspan=2, padx=0, pady=(100,30), sticky="new")
 
-        # Special handling for radio_4 as a checkbox
-        input_entry_placeholder = ""
-        if input_type == "file":
-            input_entry_placeholder = "Input File"
-        elif input_type == "files":
-            input_entry_placeholder = "Input File(s)"
-        elif input_type == "ofn":
-            input_entry_placeholder = "OFN List"
-        elif input_type == "folder":
-            input_entry_placeholder = "Input Folder"
+        # ----------------- Input Entry -----------------
+        input_entry_placeholder = {
+            "file": "Input File",
+            "files": "Input File(s)",
+            "ofn": "OFN List",
+            "folder": "Input Folder"
+        }.get(input_type, "Input")
 
-        self.input_entry = ctk.CTkEntry(
-            master,
-            width=200,
-            placeholder_text=f"{input_entry_placeholder}",
-        )
+        self.input_entry = ctk.CTkEntry(master, width=200, placeholder_text=input_entry_placeholder)
         self.input_entry.grid(row=1, column=1, sticky="ew", padx=(18,0), pady=(0,5))
 
         self.browse_input_button = ctk.CTkButton(master, text="Browse", command=self.browse_input, width=75)
         self.browse_input_button.grid(row=1, column=2, padx=(5,18), pady=(0,5), sticky="ew")
 
-        self.output_folder_entry = ctk.CTkEntry(
-            master,
-            width=200,
-            placeholder_text="Output Folder",
-        )
-        self.output_folder_entry.grid(row=2, column=1, sticky="ew", padx=(18,0), pady=(0,5))
+        # ----------------- TXT Entry (9-digit numbers) -----------------
+        self.txt_entry = ctk.CTkEntry(master, width=200, placeholder_text="9-Digit TXT List")
+        self.txt_entry.grid(row=2, column=1, sticky="ew", padx=(18,0), pady=(0,5))
+
+        self.browse_txt_button = ctk.CTkButton(master, text="Browse TXT", command=self.browse_txt, width=75)
+        self.browse_txt_button.grid(row=2, column=2, padx=(5,18), pady=(0,5), sticky="ew")
+
+        # ----------------- Output Folder -----------------
+        self.output_folder_entry = ctk.CTkEntry(master, width=200, placeholder_text="Output Folder")
+        self.output_folder_entry.grid(row=3, column=1, sticky="ew", padx=(18,0), pady=(0,5))
 
         self.browse_output_button = ctk.CTkButton(master, text="Browse", command=self.browse_output, width=75)
-        self.browse_output_button.grid(row=2, column=2, padx=(5,18), pady=(0,5), sticky="ew")
+        self.browse_output_button.grid(row=3, column=2, padx=(5,18), pady=(0,5), sticky="ew")
 
-        # Submit button
+        # ----------------- Submit -----------------
         self.submit_button = ctk.CTkButton(master, text="Submit", command=self.submit_process)
-        self.submit_button.grid(row=3, column=1, columnspan=2, padx=18, pady=(0,5), sticky="ew")
+        self.submit_button.grid(row=4, column=1, columnspan=2, padx=18, pady=(0,5), sticky="ew")
 
-        # Processing status
+        # ----------------- Status -----------------
         self.processing_status_var = ctk.StringVar()
-        self.processing_status_label = ctk.CTkLabel(
-            master,
-            textvariable=self.processing_status_var,
-            text_color="#808080",
-            font=("Ariel", 16)
-        )
-        self.processing_status_label.grid(row=4, column=1, columnspan=2, padx=0, pady=(35,39), sticky="ew")
-        # self.processing_status_label.configure(anchor="center")
+        self.processing_status_label = ctk.CTkLabel(master, textvariable=self.processing_status_var,
+                                                    text_color="#808080", font=("Ariel", 16))
+        self.processing_status_label.grid(row=5, column=1, columnspan=2, padx=0, pady=(35,39), sticky="ew")
 
-        # In the GUI class __init__ method, add:
         self.processing_dots = ["...", "   ", ".  ", ".. "]
         self.processing_dots_index = 0
         self.processing_dots_running = False
 
-        if ctk.get_appearance_mode() == "Dark":
-            self.progress_bar = ctk.CTkProgressBar(master, width=200, height=10, corner_radius=4, progress_color="#0091ff")
-        else:
-            self.progress_bar = ctk.CTkProgressBar(master, width=200, height=10, corner_radius=4)
-
-        self.progress_bar.grid(row=5, column=1, columnspan=2, padx=58, pady=(0,36), sticky="ew")
+        # ----------------- Progress Bar -----------------
+        progress_color = "#0091ff" if ctk.get_appearance_mode()=="Dark" else "#80c8ff"
+        self.progress_bar = ctk.CTkProgressBar(master, width=200, height=10, corner_radius=4,
+                                               progress_color=progress_color)
+        self.progress_bar.grid(row=6, column=1, columnspan=2, padx=58, pady=(0,36), sticky="ew")
         self.progress_bar.set(0)
+        self.progress_bar.grid_remove()
 
         self.progress_queue = queue.Queue()
         self.master.after(100, self.check_progress_queue)
 
-        self.progress_bar.grid_remove()
-
-        # Configure grid weights
-        for i in range(5):
+        # ----------------- Grid Configuration -----------------
+        for i in range(7):
             master.grid_rowconfigure(i, weight=0)
-
         for i in range(3):
             master.grid_columnconfigure(i, weight=0)
 
-        self.help_dropdown = None
-        self.help_button = ctk.CTkButton(
-            self.image_frame,
-            text="Help",
-            width=30,
-            height=30,
-            command=self.show_help_dropdown,
-            fg_color="#505050"
-        )
-        self.help_button.place(x=5, y=5)
-
+    # ----------------- Help Dropdown -----------------
     def show_help_dropdown(self):
         if self.help_dropdown and self.help_dropdown.winfo_exists():
             self.help_dropdown.destroy()
@@ -184,31 +144,18 @@ class GUI:
         self.help_dropdown = ctk.CTkFrame(self.image_frame, fg_color="#404040", corner_radius=6)
         self.help_dropdown.place(x=5, y=40)
 
-        instructions_btn = ctk.CTkButton(
-            self.help_dropdown, text="Instructions", width=120, command=self.show_instructions
-        )
+        instructions_btn = ctk.CTkButton(self.help_dropdown, text="Instructions", width=120,
+                                         command=self.show_instructions)
         instructions_btn.pack(pady=2, padx=2)
 
-        # Bind a global click event
         self.master.bind("<Button-1>", self.on_click_outside_help, add="+")
 
     def on_click_outside_help(self, event):
         if self.help_dropdown and self.help_dropdown.winfo_exists():
             widget = event.widget
-            # Check if click is outside the dropdown and help button
-            if widget not in (self.help_dropdown, self.help_button) and not str(widget).startswith(
-                    str(self.help_dropdown)):
+            if widget not in (self.help_dropdown, self.help_button) and not str(widget).startswith(str(self.help_dropdown)):
                 self.help_dropdown.destroy()
                 self.master.unbind("<Button-1>")
-
-    def open_edit_docs(self):
-        # Specify the path to your premade instructions document
-        edit_docs_path = r'P:\Users\Justin\Projects\efile_contested_docs\document_names.json'
-
-        if os.path.exists(edit_docs_path):
-            os.startfile(edit_docs_path)
-        else:
-            self.set_processing_status("Document Names file not found.")
 
     def show_instructions(self):
         if os.path.exists(instructions_path):
@@ -216,7 +163,7 @@ class GUI:
         else:
             self.set_processing_status("Instructions document not found.")
 
-    # Animate processing dots:
+    # ----------------- Processing Dots -----------------
     def animate_processing_dots(self):
         if self.processing_dots_running:
             dots = self.processing_dots[self.processing_dots_index]
@@ -224,7 +171,6 @@ class GUI:
             self.processing_dots_index = (self.processing_dots_index + 1) % len(self.processing_dots)
             self.master.after(500, self.animate_processing_dots)
 
-    # Update set_processing_status method:
     def set_processing_status(self, status):
         if status == "Processing...":
             self.progress_bar.grid()
@@ -247,104 +193,84 @@ class GUI:
             pass
         self.master.after(100, self.check_progress_queue)
 
+    # ----------------- Browse Functions -----------------
     def browse_input(self):
         input_path = ""
-
-        # Open the file explorer to select a file/folder
         if input_type == "files":
-            input_paths = filedialog.askopenfilenames(
-                filetypes=[("Excel files", "*.xlsx *.xlsm *.xltx *.xltm")] # Adjust file types as needed
-            )
+            input_paths = filedialog.askopenfilenames(filetypes=[("Excel files","*.xlsx *.xlsm *.xltx *.xltm")])
             if input_paths:
-                # Join file paths into a space-separated string for the entry widget
-                input_paths_str = '|'.join(input_paths)
                 self.input_entry.delete(0, "end")
-                self.input_entry.insert(0, input_paths_str)
+                self.input_entry.insert(0, "|".join(input_paths))
         elif input_type == "ofn":
-            # Look for text files only
-            input_path = filedialog.askopenfilename(
-                filetypes=[("Text files", "*.txt")]
-            )
-            # Create a list from the file content
-            with open(input_path, 'r') as file:
-                file_numbers = [line.strip() for line in file]  # Create a list
-            # Put the list into the input entry
-            self.input_entry.delete(0, "end")
-            self.input_entry.insert(0, ','.join(file_numbers))  # Join the list with a comma
+            input_path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
+            if input_path:
+                with open(input_path, "r") as f:
+                    lines = [l.strip() for l in f]
+                self.input_entry.delete(0, "end")
+                self.input_entry.insert(0, ",".join(lines))
         else:
             if input_type == "file":
                 input_path = filedialog.askopenfilename()
             if input_type == "folder":
                 input_path = filedialog.askdirectory()
-
             if input_path:
                 self.input_entry.delete(0, "end")
                 self.input_entry.insert(0, input_path)
 
+    def browse_txt(self):
+        input_path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
+        if not input_path:
+            return
+        try:
+            with open(input_path, "r") as file:
+                lines = file.readlines()
+            nums = [line.strip() for line in lines if line.strip().isdigit() and len(line.strip()) == 9]
+            if not nums:
+                self.set_processing_status("No valid 9-digit numbers found.")
+                return
+            self.txt_entry.delete(0, "end")
+            self.txt_entry.insert(0, ",".join(nums))
+        except Exception as e:
+            print("TXT read error:", e)
+            self.set_processing_status("Error reading TXT file.")
+
     def browse_output(self):
-        # Open the file explorer to select a folder
         output_path = filedialog.askdirectory()
         if output_path:
             self.output_folder_entry.delete(0, "end")
             self.output_folder_entry.insert(0, output_path)
 
-    def run_merge(self):
-        program_path = r"P:\Users\Justin\Projects\excel_merge\dist\gui\gui.exe"
-        subprocess.Popen(program_path, creationflags=subprocess.CREATE_NO_WINDOW)
-
-    def run_format(self):
-        program_path = r"P:\Users\Justin\Projects\tax_disc_split_tool\dist\gui\gui.exe"
-        subprocess.Popen(program_path, creationflags=subprocess.CREATE_NO_WINDOW)
-
+    # ----------------- Submit & Threading -----------------
     def submit_process(self):
         input_value = self.input_entry.get()
-        if not input_value:
-            self.set_processing_status("Missing parameters.")
-            return
+        txt_value = self.txt_entry.get()
         output_folder = self.output_folder_entry.get()
-        if not output_folder:
+        if not output_folder or (not input_value and not txt_value):
             self.set_processing_status("Missing parameters.")
             return
 
-        try:
-            # Run the main function in a separate thread
-            threading.Thread(target=self.main_threaded, args=(input_value, output_folder)).start()
+        # Prioritize TXT input if provided
+        if txt_value:
+            input_value = [num.strip() for num in txt_value.split(",")]
+        elif input_type in ["ofn","files"]:
+            input_value = [num.strip() for num in input_value.replace("|",",").split(",")]
 
-            # Disable the submit Excel button during processing
-            self.submit_button.configure(state="disabled")
-
-            # Set processing status
-            self.set_processing_status("Processing...")
-
-        except Exception as e:
-            # Provide user-friendly error message
-            print("Error:", e)
-            self.set_processing_status("Error during processing")
-
-            # Re-enable the submit Excel button on error
-            self.submit_button.configure(state="normal")
+        threading.Thread(target=self.main_threaded, args=(input_value, output_folder)).start()
+        self.submit_button.configure(state="disabled")
+        self.set_processing_status("Processing...")
 
     def main_threaded(self, input_value, output_folder):
         try:
-            # Reset the progress bar
             self.progress_bar.set(0)
-
-            if input_type == "ofn":
-                input_value = [num.strip() for num in input_value.split(',')]
-            if input_type == "files":
-                input_value = input_value.split('|')
-
             main(input_value, output_folder, self.progress_queue)
-
-            # Provide user feedback upon completion
             self.set_processing_status("Processing complete.")
         except Exception as e:
-            # Provide user-friendly error message
             print("Error during processing:", e)
+            self.set_processing_status("Error during processing")
         finally:
-            # Re-enable the submit Excel button after processing
             self.submit_button.configure(state="normal")
 
+# ----------------- Main -----------------
 if __name__ == "__main__":
     root = ctk.CTk()
     app = GUI(root)

@@ -5,7 +5,7 @@ a = Analysis(
     ['gui.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('.\\assets\\rvo_logo.png', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
